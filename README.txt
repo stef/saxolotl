@@ -1,7 +1,7 @@
 salty axolotl implements the Axolotl ratched based on primitives found in DJBs
 NaCL-derivate libsodium.
 
-dependencies: SecureString, scrypt, pysodium
+dependencies: SecureString, pysodium
 
 example:
 

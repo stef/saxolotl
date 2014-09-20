@@ -22,7 +22,6 @@
 import struct
 import pysodium as nacl
 from SecureString import clearmem
-import scrypt
 
 KEY_SIZE = nacl.crypto_secretbox_KEYBYTES
 
@@ -111,24 +110,24 @@ wtf:ratchet_flag : True if the party will send a new ratchet key in next msg
         self.DHIr          = peer['identitykey']
         self.isalice       = self.me.identitykey.pk <= peer['identitykey']
         mk = self.tripledh()
-        self.RK            = scrypt.hash(mk, "RK")[:KEY_SIZE]
+        self.RK            = nacl.crypto_generichash(mk, "RK",KEY_SIZE)
         if self.isalice:
             self.DHRr      = peer['DHRs']
             self.DHRs      = None
-            self.HKs           = scrypt.hash(mk, "HKs")[:KEY_SIZE]
-            self.HKr           = scrypt.hash(mk, "HKr")[:KEY_SIZE]
-            self.NHKs          = scrypt.hash(mk, "NHKs")[:KEY_SIZE]
-            self.NHKr          = scrypt.hash(mk, "NHKr")[:KEY_SIZE]
-            self.CKs           = scrypt.hash(mk, "CKs")[:KEY_SIZE]
-            self.CKr           = scrypt.hash(mk, "CKr")[:KEY_SIZE]
+            self.HKs           = nacl.crypto_generichash(mk, "HKs", KEY_SIZE)
+            self.HKr           = nacl.crypto_generichash(mk, "HKr", KEY_SIZE)
+            self.NHKs          = nacl.crypto_generichash(mk, "NHKs", KEY_SIZE)
+            self.NHKr          = nacl.crypto_generichash(mk, "NHKr", KEY_SIZE)
+            self.CKs           = nacl.crypto_generichash(mk, "CKs", KEY_SIZE)
+            self.CKr           = nacl.crypto_generichash(mk, "CKr", KEY_SIZE)
             self.bobs1stmsg    = False
         else:
-            self.HKs           = scrypt.hash(mk, "HKr")[:KEY_SIZE]
-            self.HKr           = scrypt.hash(mk, "HKs")[:KEY_SIZE]
-            self.NHKs          = scrypt.hash(mk, "NHKr")[:KEY_SIZE]
-            self.NHKr          = scrypt.hash(mk, "NHKs")[:KEY_SIZE]
-            self.CKs           = scrypt.hash(mk, "CKr")[:KEY_SIZE]
-            self.CKr           = scrypt.hash(mk, "CKs")[:KEY_SIZE]
+            self.HKs           = nacl.crypto_generichash(mk, "HKr", KEY_SIZE)
+            self.HKr           = nacl.crypto_generichash(mk, "HKs", KEY_SIZE)
+            self.NHKs          = nacl.crypto_generichash(mk, "NHKr", KEY_SIZE)
+            self.NHKr          = nacl.crypto_generichash(mk, "NHKs", KEY_SIZE)
+            self.CKs           = nacl.crypto_generichash(mk, "CKr", KEY_SIZE)
+            self.CKr           = nacl.crypto_generichash(mk, "CKs", KEY_SIZE)
             self.bobs1stmsg    = True
 
         clearmem(mk)
@@ -191,7 +190,7 @@ wtf:ratchet_flag : True if the party will send a new ratchet key in next msg
             self.DHRs = Key().new()
             self.PNs = self.Ns # wtf: not in spec, but seems needed
             self.Ns = 0 # wtf: not in spec, but seems needed
-        mk = scrypt.hash(self.CKs, 'MK')[:nacl.crypto_secretbox_KEYBYTES]
+        mk = nacl.crypto_generichash(self.CKs, 'MK', nacl.crypto_secretbox_KEYBYTES)
         hnonce = nacl.randombytes(nacl.crypto_secretbox_NONCEBYTES)
         mnonce = nacl.randombytes(nacl.crypto_secretbox_NONCEBYTES)
 
@@ -206,7 +205,7 @@ wtf:ratchet_flag : True if the party will send a new ratchet key in next msg
         clearmem(mk)
         mk = None
         self.Ns += 1
-        self.CKs = scrypt.hash(self.CKs, "CK")[:nacl.crypto_secretbox_KEYBYTES]
+        self.CKs = nacl.crypto_generichash(self.CKs, "CK", nacl.crypto_secretbox_KEYBYTES)
         return msg
 
     def stage_skipped_keys(self, HK, Nr, Np, CK):
@@ -217,11 +216,11 @@ wtf:ratchet_flag : True if the party will send a new ratchet key in next msg
         header key.  Returns the chain key and message key corresponding to the future message number.
         """
         for _ in xrange(Np - Nr):
-            mk = scrypt.hash(CK, 'MK')[:nacl.crypto_secretbox_KEYBYTES]
+            mk = nacl.crypto_generichash(CK, 'MK', nacl.crypto_secretbox_KEYBYTES)
             self.staged_HK_MK[mk] = HK
-            CK = scrypt.hash(CK, 'CK')[:nacl.crypto_secretbox_KEYBYTES]
-        mk = scrypt.hash(CK, 'MK')[:nacl.crypto_secretbox_KEYBYTES]
-        CK = scrypt.hash(CK, 'CK')[:nacl.crypto_secretbox_KEYBYTES]
+            CK = nacl.crypto_generichash(CK, 'CK', nacl.crypto_secretbox_KEYBYTES)
+        mk = nacl.crypto_generichash(CK, 'MK', nacl.crypto_secretbox_KEYBYTES)
+        CK = nacl.crypto_generichash(CK, 'CK', nacl.crypto_secretbox_KEYBYTES)
         return CK, mk
 
     def try_skipped_keys(self, hcrypt, hnonce, mcrypt, mnonce):
@@ -309,14 +308,14 @@ wtf:ratchet_flag : True if the party will send a new ratchet key in next msg
             msg = nacl.crypto_secretbox_open(mcrypt, mnonce, MK)
             if self.bobs1stmsg:
                 self.DHRr = headers[8:]
-                self.RK = scrypt.hash(self.RK, nacl.crypto_scalarmult_curve25519(self.DHRs.sk,self.DHRr))[:KEY_SIZE]
+                self.RK = nacl.crypto_generichash(self.RK, nacl.crypto_scalarmult_curve25519(self.DHRs.sk,self.DHRr), KEY_SIZE)
                 self.HKs = self.NHKs
                 if self.isalice:
-                    self.NHKs = scrypt.hash(self.RK, "NHKs")[:KEY_SIZE]
-                    self.CKs = scrypt.hash(self.RK, "CKs")[:KEY_SIZE]
+                    self.NHKs = nacl.crypto_generichash(self.RK, "NHKs", KEY_SIZE)
+                    self.CKs = nacl.crypto_generichash(self.RK, "CKs", KEY_SIZE)
                 else:
-                    self.NHKs = scrypt.hash(self.RK, "NHKr")[:KEY_SIZE]
-                    self.CKs = scrypt.hash(self.RK, "CKr")[:KEY_SIZE]
+                    self.NHKs = nacl.crypto_generichash(self.RK, "NHKr", KEY_SIZE)
+                    self.CKs = nacl.crypto_generichash(self.RK, "CKr", KEY_SIZE)
                 self.DHRs.clear()
                 self.DHRs = None
                 self.bobs1stmsg = False
@@ -327,28 +326,28 @@ wtf:ratchet_flag : True if the party will send a new ratchet key in next msg
             PNp = struct.unpack('>I',headers[4:8])[0]
             DHRp = headers[8:]
             self.stage_skipped_keys(self.HKr, self.Nr, PNp, self.CKr)
-            RKp = scrypt.hash(self.RK, nacl.crypto_scalarmult_curve25519(self.DHRs.sk,self.DHRr))[:KEY_SIZE]
+            RKp = nacl.crypto_generichash(self.RK, nacl.crypto_scalarmult_curve25519(self.DHRs.sk,self.DHRr), KEY_SIZE)
             HKp = self.NHKr
             if self.isalice:
-                NHKp = scrypt.hash(RKp, "NHKr")[:KEY_SIZE]
-                CKp = scrypt.hash(RKp, "CKr")[:KEY_SIZE]
+                NHKp = nacl.crypto_generichash(RKp, "NHKr", KEY_SIZE)
+                CKp = nacl.crypto_generichash(RKp, "CKr", KEY_SIZE)
             else:
-                NHKp = scrypt.hash(RKp, "NHKs")[:KEY_SIZE]
-                CKp = scrypt.hash(RKp, "CKs")[:KEY_SIZE]
+                NHKp = nacl.crypto_generichash(RKp, "NHKs", KEY_SIZE)
+                CKp = nacl.crypto_generichash(RKp, "CKs", KEY_SIZE)
             CKp, MK = self.stage_skipped_keys(HKp, 0, Np, CKp)
             msg = nacl.crypto_secretbox_open(mcrypt, mnonce, MK)
             self.RK = RKp
             self.HKr = HKp
             self.NHKr = NHKp
             self.DHRr = DHRp
-            self.RK = scrypt.hash(self.RK, nacl.crypto_scalarmult_curve25519(self.DHRs.sk,self.DHRr))[:KEY_SIZE]
+            self.RK = nacl.crypto_generichash(self.RK, nacl.crypto_scalarmult_curve25519(self.DHRs.sk,self.DHRr), KEY_SIZE)
             self.HKs = self.NHKs
             if self.isalice:
-                self.NHKs = scrypt.hash(self.RK, "NHKs")[:KEY_SIZE]
-                self.CKs = scrypt.hash(self.RK, "CKs")[:KEY_SIZE]
+                self.NHKs = nacl.crypto_generichash(self.RK, "NHKs", KEY_SIZE)
+                self.CKs = nacl.crypto_generichash(self.RK, "CKs", KEY_SIZE)
             else:
-                self.NHKs = scrypt.hash(self.RK, "NHKr")[:KEY_SIZE]
-                self.CKs = scrypt.hash(self.RK, "CKr")[:KEY_SIZE]
+                self.NHKs = nacl.crypto_generichash(self.RK, "NHKr", KEY_SIZE)
+                self.CKs = nacl.crypto_generichash(self.RK, "CKr", KEY_SIZE)
             self.DHRs.clear()
             self.DHRs = None
 
@@ -396,8 +395,10 @@ def test():
     ctx1 = AxolotlCTX(peer1)
     ctx2 = AxolotlCTX(peer2)
 
-    ctx1.init(ctx2.aspeer())
-    ctx2.init(ctx1.aspeer())
+    p2=ctx2.aspeer()
+    p1=ctx1.aspeer()
+    ctx1.init(p2)
+    ctx2.init(p1)
 
     assert(ctx1.RK == ctx2.RK)
     assert(ctx2.recv(ctx1.send("howdy")) == 'howdy')
